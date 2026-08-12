@@ -1,1 +1,22 @@
 #For serving ml_model
+FROM python:3.11-slim
+RUN groupadd -g 999 appuser && useradd -r -u 999 -g appuser appuser
+
+WORKDIR /app
+
+COPY requirements/serve.txt ./requirements/serve.txt
+RUN pip install --no-cache-dir -r requirements/serve.txt
+
+COPY src/model.py ./src/
+COPY src/serve.py ./src/
+
+RUN chown -R appuser:appuser /app
+USER appuser
+
+ENV PYTHONUNBUFFERED=1
+EXPOSE 8080
+
+HEALTHCHECK --interval=10s --timeout=3s --retries=3 \
+    CMD curl -f http://localhost:8080/health || exit 1
+
+ENTRYPOINT ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "2", "src.serve:app"]
