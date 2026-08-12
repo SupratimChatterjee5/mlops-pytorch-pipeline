@@ -10,7 +10,7 @@ from model import get_model
 
 def load_config(config_path: str) -> dict:
     with open(config_path) as f:
-    return yaml.safe_load(f)
+        return yaml.safe_load(f)
 
 
 def train_one_epoch(
