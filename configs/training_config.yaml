@@ -10,9 +10,9 @@ training:
 
 data:
   dataset: cifar10
-  data_dir: ./data
+  data_dir: /app/data
 
 output:
-  checkpoint_dir: ./checkpoints
+  checkpoint_dir: /app/checkpoints
   model_name: classifier_v1.pt
 
