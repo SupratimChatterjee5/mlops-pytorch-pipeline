@@ -89,9 +89,7 @@ def main():
     checkpoint_dir = Path(config["output"]["checkpoint_dir"])
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
     for epoch in range(config["training"]["epochs"]):
-        train_loss, train_acc = train_one_epoch(
-                model, train_loader, optimizer, criterion, device
-            )
+        train_loss, train_acc = train_one_epoch(model, train_loader, optimizer, criterion, device)
         val_loss, val_acc = evaluate(model, val_loader, criterion, device)
         log_entry = {
         "epoch": epoch + 1,
