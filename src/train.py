@@ -89,38 +89,34 @@ def main():
     checkpoint_dir = Path(config["output"]["checkpoint_dir"])
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
     for epoch in range(config["training"]["epochs"]):
-    train_loss, train_acc = train_one_epoch(
-            model, train_loader, optimizer, criterion, device
-        )
+        train_loss, train_acc = train_one_epoch(model, train_loader, optimizer, criterion, device)
         val_loss, val_acc = evaluate(model, val_loader, criterion, device)
         log_entry = {
-    "epoch": epoch + 1,
-    "train_loss": round(train_loss, 4),
-    "train_accuracy": round(train_acc, 4),
-    "val_loss": round(val_loss, 4),
-    "val_accuracy": round(val_acc, 4),
-    }
-    print(json.dumps(log_entry), flush=True)
-    if val_loss < best_val_loss:
-        best_val_loss = val_loss
-        patience_counter = 0
-        save_path = checkpoint_dir /
-        config["output"]["model_name"]
-        torch.save({
         "epoch": epoch + 1,
-        "model_state_dict": model.state_dict(),
-        "optimizer_state_dict": optimizer.state_dict(),
-        "val_loss": val_loss,
-        "val_accuracy": val_acc,
-        }, save_path)
-        print(json.dumps({"event": "checkpoint_saved", "path":
-        str(save_path)}), flush=True)
-    else:
-        patience_counter += 1
-        if patience_counter >= patience:
-        print(json.dumps({"event": "early_stopping",
-        "epoch": epoch + 1}), flush=True)
-        break
+        "train_loss": round(train_loss, 4),
+        "train_accuracy": round(train_acc, 4),
+        "val_loss": round(val_loss, 4),
+        "val_accuracy": round(val_acc, 4),
+        }
+        print(json.dumps(log_entry), flush=True)
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            patience_counter = 0
+            save_path = checkpoint_dir/config["output"]["model_name"]
+            torch.save({
+            "epoch": epoch + 1,
+            "model_state_dict": model.state_dict(),
+            "optimizer_state_dict": optimizer.state_dict(),
+            "val_loss": val_loss,
+            "val_accuracy": val_acc,
+            }, save_path)
+            print(json.dumps({"event": "checkpoint_saved", "path":
+            str(save_path)}), flush=True)
+        else:
+            patience_counter += 1
+            if patience_counter >= patience:
+                print(json.dumps({"event": "early_stopping","epoch": epoch + 1}), flush=True)
+                break
     print(json.dumps({"event": "training_complete",
     "best_val_loss": round(best_val_loss, 4)}), flush=True)
 
