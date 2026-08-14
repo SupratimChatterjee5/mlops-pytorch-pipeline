@@ -15,7 +15,7 @@ model=None
 def load_inference_model():
     global model
     if MODEL_PATH.exists():
-        model=get_model(architecture="resnet18",num_classes=10)
+        model=get_model(architecture="resnet18",num_classes=10,pretrained=False)
         checkpoint=torch.load(MODEL_PATH,map_location=DEVICE)
         state_dict=checkpoint["model_state_dict"] if "model_state_dict" in checkpoint else checkpoint
         model.load_state_dict(state_dict)
