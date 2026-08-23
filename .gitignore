@@ -3,3 +3,4 @@ data/
 checkpoints/
 sources/
 .serena/
+tests/__pycache__
