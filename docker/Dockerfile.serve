@@ -1,6 +1,8 @@
 #For serving ml_model
 FROM python:3.11-slim
 RUN groupadd -g 999 appuser && useradd -r -u 999 -g appuser -m -d /home/appuser appuser
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
