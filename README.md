@@ -28,6 +28,13 @@ flowchart LR
         PUSH["push / pull_request"] --> TEST["pytest tests/"]
     end
 
+    subgraph K8s["Kubernetes - k8s/"]
+        JOB["Job: train-resnet18"] --> CKPT
+        CKPT --> DEP["Deployment: model-serving<br/>2-5 replicas"]
+        DEP --> SVC["Service: model-serving"]
+        HPA["HPA (CPU 70%)"] -.scales.-> DEP
+    end
+
     TR -. validated by .-> TEST
 ```
 
@@ -37,6 +44,7 @@ flowchart LR
 - **`src/serve.py`** — Flask inference service exposing `/health` and `/predict`, run under Gunicorn in the serving container.
 - **`docker/Dockerfile.train`** / **`docker/Dockerfile.serve`** — separate images for training and serving.
 - **`.github/workflows/ci.yml`** — installs dependencies and runs `pytest` on every push/PR to `main`/`develop`.
+- **`k8s/`** — manifests to run training as a `Job` and serving as an autoscaled `Deployment` on Kubernetes.
 
 ## Project structure
 
@@ -47,6 +55,13 @@ mlops-pytorch-pipeline/
 ├── docker/
 │   ├── Dockerfile.train
 │   └── Dockerfile.serve
+├── k8s/
+│   ├── namespace.yaml         # ml-training namespace
+│   ├── configmap.yaml         # training_config.yaml as a ConfigMap
+│   ├── training-job.yaml      # PVCs + training Job (GPU-schedulable)
+│   ├── serving-deployment.yaml # model-serving Deployment (2 replicas, probes)
+│   ├── serving-service.yaml    # ClusterIP Service for the serving pods
+│   └── hpa.yaml                # HPA: 2-5 replicas on 70% CPU
 ├── requirements/
 │   ├── train.txt
 │   └── serve.txt
@@ -65,6 +80,7 @@ mlops-pytorch-pipeline/
 ### Prerequisites
 - Python 3.11
 - Docker, for containerized training/serving
+- A Kubernetes cluster (e.g. Docker Desktop, minikube, kind) and `kubectl`, for the `k8s/` manifests
 
 ### Local environment
 
@@ -146,6 +162,53 @@ Example request:
 ```bash
 curl -X POST -F "image=@test_image.png" http://localhost:8080/predict
 ```
+
+## Kubernetes
+
+[`k8s/`](k8s/) deploys the same training/serving images to a Kubernetes cluster instead of running them as standalone containers. All resources live in the `ml-training` namespace.
+
+| File | Kind | Purpose |
+|------|------|---------|
+| [`namespace.yaml`](k8s/namespace.yaml) | `Namespace` | `ml-training` |
+| [`configmap.yaml`](k8s/configmap.yaml) | `ConfigMap` | `training_config.yaml`, mounted into the training pod at `/app/configs` |
+| [`training-job.yaml`](k8s/training-job.yaml) | `PersistentVolumeClaim` ×2, `Job` | `data-pvc` (2Gi) and `checkpoints-pvc` (500Mi), and a one-shot `train-resnet18` Job that runs to completion |
+| [`serving-deployment.yaml`](k8s/serving-deployment.yaml) | `Deployment` | `model-serving`, 2 replicas, rolling updates, `/health` liveness/readiness probes, reads the checkpoint from `checkpoints-pvc` (read-only) |
+| [`serving-service.yaml`](k8s/serving-service.yaml) | `Service` | `ClusterIP` exposing the Deployment on port 80 → container port 8080 |
+| [`hpa.yaml`](k8s/hpa.yaml) | `HorizontalPodAutoscaler` | scales `model-serving` between 2 and 5 replicas at 70% average CPU utilization |
+
+The training Job requests `nvidia.com/gpu: 1` and is pinned to nodes labeled `accelerator=nvidia-gpu` via `nodeSelector`/`tolerations` — see the comments in [`training-job.yaml`](k8s/training-job.yaml) for how to label a node, and for the WSL2 + Docker Desktop `libdxcore.so` workaround (not needed on a native Linux GPU node).
+
+**Deploy:**
+```bash
+# build the images the manifests reference (imagePullPolicy: Never — no registry push needed
+# for a local cluster like Docker Desktop; kind/minikube need an extra image-load step, see below)
+docker build -f docker/Dockerfile.train -t mlops-train:v1 .
+docker build -f docker/Dockerfile.serve -t mlops-serve:v1 .
+
+# kind:      kind load docker-image mlops-train:v1 mlops-serve:v1
+# minikube:  minikube image load mlops-train:v1 && minikube image load mlops-serve:v1
+
+kubectl apply -f k8s/namespace.yaml
+kubectl apply -f k8s/configmap.yaml
+kubectl apply -f k8s/training-job.yaml
+kubectl apply -f k8s/serving-deployment.yaml
+kubectl apply -f k8s/serving-service.yaml
+kubectl apply -f k8s/hpa.yaml
+```
+
+**Check status:**
+```bash
+kubectl get pods,jobs,deployments,hpa -n ml-training
+kubectl logs -n ml-training job/train-resnet18
+```
+
+**Reach the service** (no Ingress is defined):
+```bash
+kubectl port-forward -n ml-training svc/model-serving 8080:80
+curl -X POST -F "image=@test_image.png" http://localhost:8080/predict
+```
+
+Terminal output captured while running this on a GPU-enabled node is in [`terminal_outs/`](terminal_outs/).
 
 ## Continuous Integration
 
