@@ -1,0 +1,98 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: data-pvc
+  namespace: ml-training
+  labels:
+    project: mlops-pytorch-pipeline
+    component: data
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: checkpoints-pvc
+  namespace: ml-training
+  labels:
+    project: mlops-pytorch-pipeline
+    component: checkpoints
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 500Mi
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: train-resnet18
+  namespace: ml-training
+  labels:
+    project: mlops-pytorch-pipeline
+    component: training
+spec:
+  backoffLimit: 2
+  template:
+    metadata:
+      labels:
+        app: train-resnet18
+    spec:
+      restartPolicy: Never
+      # --- GPU bonus (Part D) ---
+      # Schedule only onto nodes advertising a GPU. Label the node with:
+      #   kubectl label node <node> accelerator=nvidia-gpu
+      nodeSelector:
+        accelerator: nvidia-gpu
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: train
+          image: mlops-train:v1
+          imagePullPolicy: Never
+          resources:
+            requests:
+              cpu: "2"
+              memory: 4Gi
+            limits:
+              cpu: "2"
+              memory: 4Gi
+              nvidia.com/gpu: 1   # GPU bonus (Part D)
+          volumeMounts:
+            - name: configs
+              mountPath: /app/configs
+              readOnly: true
+            - name: data
+              mountPath: /app/data
+            - name: checkpoints
+              mountPath: /app/checkpoints
+            # Local-environment workaround (WSL2 + Docker Desktop only, not part of
+            # the assignment spec). On WSL2 the GPU is reached through /dev/dxg via
+            # libdxcore.so. Docker Desktop injects 10 of the 11 NVIDIA libraries into
+            # GPU pods but omits libdxcore.so, so libnvidia-ml.so.1 cannot open the
+            # device and nvmlInit() fails with NVML_ERROR_NOT_SUPPORTED. Mounting the
+            # single missing library restores CUDA. Drop this block on a normal Linux
+            # GPU node, where the container runtime injects it already.
+            - name: wsl-dxcore
+              mountPath: /usr/lib/x86_64-linux-gnu/libdxcore.so
+      volumes:
+        - name: configs
+          configMap:
+            name: training-config
+        - name: data
+          persistentVolumeClaim:
+            claimName: data-pvc
+        - name: checkpoints
+          persistentVolumeClaim:
+            claimName: checkpoints-pvc
+        - name: wsl-dxcore   # see note above - WSL2/Docker Desktop workaround only
+          hostPath:
+            path: /usr/lib/x86_64-linux-gnu/libdxcore.so
+            type: File
