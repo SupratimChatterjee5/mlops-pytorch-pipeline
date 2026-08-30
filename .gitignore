@@ -5,6 +5,7 @@ data/
 checkpoints/
 sources/
 .serena/
+tests/__pycache__
 test_image1.png
 test_image2.png
 .vscode/
